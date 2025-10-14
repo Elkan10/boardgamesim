@@ -1,4 +1,11 @@
+
+use std::fmt::{Display, Write};
+
 use crate::bitboard::{Bitboard, Connect4Bitboard, Connect4Move, Connect4Symmetry};
+
+pub const RED: &str = "\x1b[31m";
+pub const YELLOW: &str = "\x1b[33m";
+pub const NO_COLOR: &str = "\x1b[0m";
 
 pub trait Board {
     type Move;
@@ -102,14 +109,10 @@ impl Board for Connect4Board {
     fn legal_moves(&self) -> Vec<Self::Move> {
         let mut out = vec![];
         let mut x = 0;
-        for (red, yellow) in self.red.data.to_le_bytes().iter().skip(1).zip(self.yellow.data.to_le_bytes().iter().skip(1)) {
+        for (red, yellow) in self.red.data.to_le_bytes().iter().zip(self.yellow.data.to_le_bytes()) {
             let b = (red | yellow) + 1;
             let height = b.trailing_zeros();
-            if height == 8 {
-                out.push(Connect4Move::new(x, 0));
-            } else if height >= 6 {
-                
-            } else {
+            if height < 6 {
                 out.push(Connect4Move::new(x, height as u8));
             }
             x += 1;
@@ -133,5 +136,25 @@ impl Board for Connect4Board {
         }
     }
 
+}
+
+impl Display for Connect4Board {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for i in 0..42 {
+            if i % 7 == 0 {
+                write!(f, "\n")?;
+            }
+            let red = self.red.getp(i);
+            let yellow = self.yellow.getp(i);
+            match (red, yellow) {
+                (true, true) => f.write_char('E'),
+                (true, false) => write!(f, " {}● ", RED),
+                (false, true) => write!(f, " {}● ", YELLOW),
+                (false, false) => write!(f, " {}○ ", NO_COLOR),
+            }?
+        }
+        write!(f, "{}", NO_COLOR)?;
+        Ok(())
+    }
 }
 
