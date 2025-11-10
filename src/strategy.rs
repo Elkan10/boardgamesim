@@ -2,6 +2,11 @@ use rand::seq::IndexedRandom;
 
 use crate::{bitboard::{Bitboard, Move}, board::{Board, Win}};
 
+trait RowC {
+    fn new() -> Self;
+    fn add(&mut self, mask: u64, red_mask: u64, yellow_mask: u64);
+}
+
 #[derive(Debug)]
 pub struct Counts {
     r4: u8,
@@ -13,13 +18,13 @@ pub struct Counts {
     y2: u8,
     y1: u8,
 }
-impl Counts {
+impl RowC for Counts {
     fn new() -> Self {
         Self { r3: 0, r2: 0, r1: 0, y3: 0, y2: 0, y1: 0, r4: 0, y4: 0 }
     }
 
-    fn add(&mut self, red: u32, yellow: u32) {
-        match (red, yellow) {
+    fn add(&mut self, _: u64, red_mask: u64, yellow_mask: u64) {
+        match (red_mask.count_ones(), yellow_mask.count_ones()) {
             (1,0) => {self.r1 += 1;}
             (2,0) => {self.r2 += 1;}
             (3,0) => {self.r3 += 1;}
@@ -33,8 +38,35 @@ impl Counts {
     }
 }
 
-pub fn counts(board: Board) -> Counts {
-    let mut h = Counts::new();
+pub struct Base {
+    moves: Vec<Move>,
+}
+
+impl RowC for Base {
+    fn new() -> Self {
+        Self {moves: vec![]}
+    }
+
+    fn add(&mut self, mask: u64, red_mask: u64, yellow_mask: u64) {
+        if red_mask.count_ones() == 3 && yellow_mask.count_ones() == 0 {
+            let v = mask ^ red_mask;
+            let i = v.trailing_zeros();
+            let x = i / 8;
+            let y = i - 8 * x;
+            self.moves.push(Move { x: x as u8, y: y as u8 });
+        }
+        if yellow_mask.count_ones() == 3 && red_mask.count_ones() == 0 {
+            let v = mask ^ yellow_mask;
+            let i = v.trailing_zeros();
+            let x = i / 8;
+            let y = i - 8 * x;
+            self.moves.push(Move { x: x as u8, y: y as u8 });
+        }
+    }
+}
+
+fn counts<T: RowC>(board: Board) -> T {
+    let mut h = T::new();
     let vert_mask: u64 = 0x0f;
     let horiz_mask: u64 = 0x01010101;
     let diag_dmask: u64 = 0x08040201;
@@ -44,28 +76,28 @@ pub fn counts(board: Board) -> Counts {
             // Vertical
             if y < 3 {
                 let mask = vert_mask << (8*x + y);
-                let red = (board.red.data & mask).count_ones();
-                let yellow = (board.yellow.data & mask).count_ones();
-                h.add(red, yellow);
+                let red = board.red.data & mask;
+                let yellow = board.yellow.data & mask;
+                h.add(mask, red, yellow);
             }
             //Horizontal
             if x < 4 {
                 let mask = horiz_mask << (8*x + y);
-                let red = (board.red.data & mask).count_ones();
-                let yellow = (board.yellow.data & mask).count_ones();
-                h.add(red, yellow);
+                let red = board.red.data & mask;
+                let yellow = board.yellow.data & mask;
+                h.add(mask, red, yellow);
             }
             //Diagonals
             if y < 3 && x < 4 {
                 let mask = diag_dmask << (8*x + y);
-                let red = (board.red.data & mask).count_ones();
-                let yellow = (board.yellow.data & mask).count_ones();
-                h.add(red, yellow);
+                let red = board.red.data & mask;
+                let yellow = board.yellow.data & mask;
+                h.add(mask, red, yellow);
 
                 let mask = diag_umask << (8*x + y);
-                let red = (board.red.data & mask).count_ones();
-                let yellow = (board.yellow.data & mask).count_ones();
-                h.add(red, yellow);
+                let red = board.red.data & mask;
+                let yellow = board.yellow.data & mask;
+                h.add(mask, red, yellow);
             }
         }
     }
@@ -120,8 +152,18 @@ impl Above {
 
 impl Strategy for Above {
     fn best_move(&self, board: Board, last_move: Move) -> Move {
+        let base: Base = counts(board);
+        let legal = board.legal_moves();
+        for mv in base.moves {
+            println!("Base: {:?}", mv);
+            if legal.contains(&mv) {
+                return mv;
+            }
+        }
+
+        
         let above = Move {x: last_move.x, y: last_move.y + 1};
-        if board.legal_moves().contains(&above) {
+        if legal.contains(&above) {
             return above;
         } else {
             return *board.legal_moves().choose(&mut rand::rng()).unwrap();
@@ -146,7 +188,7 @@ impl Evaluator for Greedy {
             crate::board::Win::Yellow => return -1000,
             crate::board::Win::Tie => return 0,
         }
-        let h = counts(board);
+        let h = counts::<Counts>(board);
         let red = h.r3 as i32 * 10 + h.r2 as i32 * 3 + h.r1 as i32;
         let yellow = h.y3 as i32 * 10 + h.y2 as i32 * 3 + h.y1 as i32;
         red - yellow
