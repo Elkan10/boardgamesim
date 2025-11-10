@@ -1,4 +1,6 @@
-use crate::{bitboard::Move, board::{Board, Win}};
+use rand::seq::IndexedRandom;
+
+use crate::{bitboard::{Bitboard, Move}, board::{Board, Win}};
 
 #[derive(Debug)]
 pub struct Counts {
@@ -72,8 +74,26 @@ pub fn counts(board: Board) -> Counts {
 }
 
 
+pub fn simulate(red: &impl Strategy, yellow: &impl Strategy) {
+    let mut board = Board {
+        red: Bitboard::new(),
+        yellow: Bitboard::new(),
+        red_to_play: true,
+    };
+    let mut mv = Move {x: 8, y: 0};
+    while let Win::None = board.win() {
+        mv = if board.red_to_play {
+            red.best_move(board, mv)
+        } else {
+            yellow.best_move(board, mv)
+        };
+        board = board.do_move(mv);
+        println!("---------{}", board);
+    }
+}
+
 pub trait Strategy {
-    fn best_move(&self, board: Board) -> Move;
+    fn best_move(&self, board: Board, last_move: Move) -> Move;
 }
 
 pub trait Evaluator {
@@ -91,16 +111,34 @@ impl<E: Evaluator> Minimax<E> {
     }
 }
 
-
-pub struct Basic {}
-
-impl Basic {
+pub struct Above {}
+impl Above {
     pub fn new() -> Self {
         Self {  }
     }
 }
 
-impl Evaluator for Basic {
+impl Strategy for Above {
+    fn best_move(&self, board: Board, last_move: Move) -> Move {
+        let above = Move {x: last_move.x, y: last_move.y + 1};
+        if board.legal_moves().contains(&above) {
+            return above;
+        } else {
+            return *board.legal_moves().choose(&mut rand::rng()).unwrap();
+        }
+    }
+}
+
+
+pub struct Greedy {}
+
+impl Greedy {
+    pub fn new() -> Self {
+        Self {  }
+    }
+}
+
+impl Evaluator for Greedy {
     fn eval(&self, board: Board) -> i32 {
         match board.win() {
             crate::board::Win::None => {},
@@ -109,14 +147,14 @@ impl Evaluator for Basic {
             crate::board::Win::Tie => return 0,
         }
         let h = counts(board);
-        let red = (h.r4 as i32 * 10000 + h.r3 as i32 * 10 + h.r2 as i32 * 3 + h.r1 as i32).min(1000);
-        let yellow = (h.y4 as i32 * 10000 + h.y3 as i32 * 10 + h.y2 as i32 * 3 + h.y1 as i32).min(1000);
+        let red = h.r3 as i32 * 10 + h.r2 as i32 * 3 + h.r1 as i32;
+        let yellow = h.y3 as i32 * 10 + h.y2 as i32 * 3 + h.y1 as i32;
         red - yellow
     }
 }
 
 impl<E: Evaluator> Strategy for Minimax<E> {
-    fn best_move(&self, board: Board) -> Move {
+    fn best_move(&self, board: Board, _last_move: Move) -> Move {
         let alpha = i32::MIN + 1;        
         let vals = board.legal_moves().into_iter().map(|mv| (mv,minimax(board.do_move(mv), &self.eval, self.depth, alpha, -alpha)));
         if board.red_to_play {

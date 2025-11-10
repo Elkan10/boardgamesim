@@ -3,12 +3,11 @@ pub enum Symmetry {
     S1, //Horizontal Reflection
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Move {
     pub x: u8,
     pub y: u8,
 }
-
 
 impl Move {
     pub fn new(x: u8, y: u8) -> Self {

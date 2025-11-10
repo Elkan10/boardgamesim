@@ -1,8 +1,8 @@
 use std::io::stdin;
 
-use crate::bitboard::Bitboard;
+use crate::bitboard::{Bitboard, Move};
 use crate::board::{Board, Win};
-use crate::strategy::{counts, Basic, Evaluator, Minimax, Strategy};
+use crate::strategy::{simulate, Above, Greedy, Minimax, Strategy};
 
 mod board;
 mod bitboard;
@@ -15,16 +15,9 @@ fn main() {
         yellow: Bitboard::new(),
         red_to_play: true,
     };
-    let mut i = 0;
-    let b = Basic::new();
-    let minimax = Minimax::new(Basic::new(), 10);
-    while let Win::None = board.win() {
-        let mv = minimax.best_move(board);
-        board = board.do_move(mv);
-        println!("Board: {}", board);
-        i += 1;
-        let mut _s = String::new();
-        stdin().read_line(&mut _s).unwrap();
-    }
-    
+
+    let minimax = Minimax::new(Greedy::new(), 10);
+    let above = Above::new();
+
+    simulate(&above, &minimax);
 }
