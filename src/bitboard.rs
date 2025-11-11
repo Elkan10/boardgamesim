@@ -1,3 +1,51 @@
+pub const WIN_MASKS: [u64; 69] = generate_win_masks();
+
+
+const fn generate_win_masks() -> [u64; 69] {
+    let mut masks = [0u64; 69];
+    let mut i = 0;
+    let mut x = 0;
+    let mut y = 0;
+
+    
+    let vert_mask: u64 = 0x0f;
+    let horiz_mask: u64 = 0x01010101;
+    let diag_dmask: u64 = 0x08040201;
+    let diag_umask: u64 = 0x01020408;
+    
+    while x < 7 {
+        while y < 6 {
+            // Vertical
+            if y < 3 {
+                let mask = vert_mask << (8*x + y);
+                masks[i] = mask;
+                i += 1;
+            }
+            //Horizontal
+            if x < 4 {
+                let mask = horiz_mask << (8*x + y);
+                masks[i] = mask;
+                i += 1;
+            }
+            //Diagonals
+            if y < 3 && x < 4 {
+                let mask = diag_dmask << (8*x + y);
+                masks[i] = mask;
+                i += 1;
+                
+                let mask = diag_umask << (8*x + y);
+                masks[i] = mask;
+                i += 1;
+            }
+            y += 1;
+        }
+        x += 1;
+    }
+
+    return masks;
+}
+
+
 pub enum Symmetry {
     None,
     S1, //Horizontal Reflection

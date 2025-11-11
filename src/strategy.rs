@@ -1,11 +1,7 @@
 use rand::seq::IndexedRandom;
 
-use crate::{bitboard::{Bitboard, Move}, board::{Board, Win}};
+use crate::{bitboard::{Bitboard, Move, WIN_MASKS}, board::{Board, Win}};
 
-trait RowC {
-    fn new() -> Self;
-    fn add(&mut self, mask: u64, red_mask: u64, yellow_mask: u64);
-}
 
 #[derive(Debug)]
 pub struct Counts {
@@ -18,12 +14,20 @@ pub struct Counts {
     y2: u8,
     y1: u8,
 }
-impl RowC for Counts {
-    fn new() -> Self {
-        Self { r3: 0, r2: 0, r1: 0, y3: 0, y2: 0, y1: 0, r4: 0, y4: 0 }
+impl Counts {
+    fn new(board: Board) -> Self {
+        let mut h = Counts {r4: 0, r3: 0, r2: 0, r1: 0, y4: 0, y3: 0, y2: 0, y1: 0};
+
+        for mask in WIN_MASKS {
+            let red = board.red.data & mask;
+            let yellow = board.yellow.data & mask;
+            h.add(red, yellow);
+        }
+
+        return h;
     }
 
-    fn add(&mut self, _: u64, red_mask: u64, yellow_mask: u64) {
+    fn add(&mut self, red_mask: u64, yellow_mask: u64) {
         match (red_mask.count_ones(), yellow_mask.count_ones()) {
             (1,0) => {self.r1 += 1;}
             (2,0) => {self.r2 += 1;}
@@ -38,72 +42,49 @@ impl RowC for Counts {
     }
 }
 
-pub struct Base {
-    moves: Vec<Move>,
+pub struct Base<S: Strategy> {
+    strat: S,
 }
 
-impl RowC for Base {
-    fn new() -> Self {
-        Self {moves: vec![]}
-    }
-
-    fn add(&mut self, mask: u64, red_mask: u64, yellow_mask: u64) {
-        if red_mask.count_ones() == 3 && yellow_mask.count_ones() == 0 {
-            let v = mask ^ red_mask;
-            let i = v.trailing_zeros();
-            let x = i / 8;
-            let y = i - 8 * x;
-            self.moves.push(Move { x: x as u8, y: y as u8 });
-        }
-        if yellow_mask.count_ones() == 3 && red_mask.count_ones() == 0 {
-            let v = mask ^ yellow_mask;
-            let i = v.trailing_zeros();
-            let x = i / 8;
-            let y = i - 8 * x;
-            self.moves.push(Move { x: x as u8, y: y as u8 });
-        }
+impl<S: Strategy> Base<S> {
+    pub fn new(strat: S) -> Self {
+        Self { strat }
     }
 }
 
-fn counts<T: RowC>(board: Board) -> T {
-    let mut h = T::new();
-    let vert_mask: u64 = 0x0f;
-    let horiz_mask: u64 = 0x01010101;
-    let diag_dmask: u64 = 0x08040201;
-    let diag_umask: u64 = 0x01020408;
-    for x in 0..7 {
-        for y in 0..6 {
-            // Vertical
-            if y < 3 {
-                let mask = vert_mask << (8*x + y);
-                let red = board.red.data & mask;
-                let yellow = board.yellow.data & mask;
-                h.add(mask, red, yellow);
-            }
-            //Horizontal
-            if x < 4 {
-                let mask = horiz_mask << (8*x + y);
-                let red = board.red.data & mask;
-                let yellow = board.yellow.data & mask;
-                h.add(mask, red, yellow);
-            }
-            //Diagonals
-            if y < 3 && x < 4 {
-                let mask = diag_dmask << (8*x + y);
-                let red = board.red.data & mask;
-                let yellow = board.yellow.data & mask;
-                h.add(mask, red, yellow);
+impl<S: Strategy> Strategy for Base<S> {
+    fn best_move(&self, board: Board, last_move: Move) -> Move {
+        let legal = board.legal_moves();
 
-                let mask = diag_umask << (8*x + y);
-                let red = board.red.data & mask;
-                let yellow = board.yellow.data & mask;
-                h.add(mask, red, yellow);
+        for mask in WIN_MASKS {
+            let red_mask = board.red.data & mask;
+            let yellow_mask = board.yellow.data & mask;
+            if red_mask.count_ones() == 3 && yellow_mask.count_ones() == 0 {
+                let v = mask ^ red_mask;
+                let i = v.trailing_zeros();
+                let x = i / 8;
+                let y = i - 8 * x;
+                let mv = Move {x: x as u8, y: y as u8};
+                if legal.contains(&mv) {
+                    return mv;
+                }
+            }
+            if yellow_mask.count_ones() == 3 && red_mask.count_ones() == 0 {
+                let v = mask ^ yellow_mask;
+                let i = v.trailing_zeros();
+                let x = i / 8;
+                let y = i - 8 * x;
+                let mv = Move {x: x as u8, y: y as u8};
+                if legal.contains(&mv) {
+                    return mv;
+                }
             }
         }
-    }
 
-    return h;
+        self.strat.best_move(board, last_move)
+    }
 }
+
 
 
 pub fn simulate(red: &impl Strategy, yellow: &impl Strategy) {
@@ -132,39 +113,48 @@ pub trait Evaluator {
     fn eval(&self, board: Board) -> i32;
 }
 
-pub struct Minimax<E: Evaluator> {
-    eval: E,
-    depth: u32,
-}
-
-impl<E: Evaluator> Minimax<E> {
-    pub fn new(eval: E, depth: u32) -> Self {
-        Self { eval, depth }
-    }
-}
-
-pub struct Above {}
-impl Above {
-    pub fn new() -> Self {
-        Self {  }
-    }
-}
-
-impl Strategy for Above {
-    fn best_move(&self, board: Board, last_move: Move) -> Move {
-        let base: Base = counts(board);
-        let legal = board.legal_moves();
-        for mv in base.moves {
-            println!("Base: {:?}", mv);
-            if legal.contains(&mv) {
-                return mv;
-            }
+impl<E> Strategy for E where E: Evaluator {
+    fn best_move(&self, board: Board, _last_move: Move) -> Move {
+        let vals = board.legal_moves().into_iter().map(|mv| (mv, self.eval(board.do_move(mv))));
+        if board.red_to_play {
+            vals.max_by_key(|x| x.1).unwrap().0
+        } else {
+            vals.min_by_key(|x| x.1).unwrap().0 
         }
+    }
+}
 
-        
-        let above = Move {x: last_move.x, y: last_move.y + 1};
-        if legal.contains(&above) {
-            return above;
+
+pub struct Defensive<M: Strategy> {
+    mirror: M,
+}
+impl<M: Strategy> Defensive<M> {
+    pub fn new(mirror: M) -> Self {
+        Self { mirror }
+    }
+}
+
+impl<M: Strategy> Strategy for Defensive<M> {
+    fn best_move(&self, board: Board, last_move: Move) -> Move {
+        self.mirror.best_move(board.flipped(), last_move)
+    }
+}
+
+pub struct Offset {
+    x_offset: u8,
+    y_offset: u8,
+}
+impl Offset {
+    pub fn new(x_offset: u8, y_offset: u8) -> Self {
+        Self { x_offset, y_offset }
+    }
+}
+
+impl Strategy for Offset {
+    fn best_move(&self, board: Board, last_move: Move) -> Move {
+        let offset = Move {x: last_move.x + self.x_offset, y: last_move.y + self.y_offset};
+        if board.legal_moves().contains(&offset) {
+            return offset;
         } else {
             return *board.legal_moves().choose(&mut rand::rng()).unwrap();
         }
@@ -184,14 +174,44 @@ impl Evaluator for Greedy {
     fn eval(&self, board: Board) -> i32 {
         match board.win() {
             crate::board::Win::None => {},
-            crate::board::Win::Red => return 1000,
-            crate::board::Win::Yellow => return -1000,
+            crate::board::Win::Red => return 10000,
+            crate::board::Win::Yellow => return -10000,
             crate::board::Win::Tie => return 0,
         }
-        let h = counts::<Counts>(board);
-        let red = h.r3 as i32 * 10 + h.r2 as i32 * 3 + h.r1 as i32;
-        let yellow = h.y3 as i32 * 10 + h.y2 as i32 * 3 + h.y1 as i32;
+        let h = Counts::new(board);
+        let red = h.r3 as i32 * 100 + h.r2 as i32 * 5 + h.r1 as i32;
+        let yellow = h.y3 as i32 * 100 + h.y2 as i32 * 5 + h.y1 as i32;
         red - yellow
+    }
+}
+
+
+pub struct Random {}
+
+impl Random {
+    pub fn new() -> Self {
+        Self {  }
+    }
+}
+
+impl Strategy for Random {
+    fn best_move(&self, board: Board, _last_move: Move) -> Move {
+        *board.legal_moves().choose(&mut rand::rng()).unwrap()
+    }
+}
+
+
+
+
+
+pub struct Minimax<E: Evaluator> {
+    eval: E,
+    depth: u32,
+}
+
+impl<E: Evaluator> Minimax<E> {
+    pub fn new(eval: E, depth: u32) -> Self {
+        Self { eval, depth }
     }
 }
 
@@ -200,9 +220,11 @@ impl<E: Evaluator> Strategy for Minimax<E> {
         let alpha = i32::MIN + 1;        
         let vals = board.legal_moves().into_iter().map(|mv| (mv,minimax(board.do_move(mv), &self.eval, self.depth, alpha, -alpha)));
         if board.red_to_play {
-            vals.max_by_key(|x| x.1).unwrap().0
+            let (mv, _) = vals.max_by_key(|x| x.1).unwrap();
+            return mv
         } else {
-            vals.min_by_key(|x| x.1).unwrap().0 
+            let (mv, _) = vals.min_by_key(|x| x.1).unwrap();
+            return mv
         }
     }
 }

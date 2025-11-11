@@ -107,6 +107,14 @@ impl Board {
         }
     }
 
+    pub fn flipped(&self) -> Board {
+        Board {
+            red: self.red,
+            yellow: self.yellow,
+            red_to_play: !self.red_to_play
+        }
+    }
+
     pub fn legal_moves(&self) -> Vec<Move> {
         let mut out = vec![];
         let mut x = 0;
