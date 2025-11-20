@@ -156,6 +156,7 @@ impl Strategy for Offset {
         if board.legal_moves().contains(&offset) {
             return offset;
         } else {
+            // TODO: Go in the direction until possible
             return *board.legal_moves().choose(&mut rand::rng()).unwrap();
         }
     }
@@ -217,7 +218,8 @@ impl<E: Evaluator> Minimax<E> {
 
 impl<E: Evaluator> Strategy for Minimax<E> {
     fn best_move(&self, board: Board, _last_move: Move) -> Move {
-        let alpha = i32::MIN + 1;        
+        let alpha = i32::MIN + 1;
+        // TODO: Randomize
         let vals = board.legal_moves().into_iter().map(|mv| (mv,minimax(board.do_move(mv), &self.eval, self.depth, alpha, -alpha)));
         if board.red_to_play {
             let (mv, _) = vals.max_by_key(|x| x.1).unwrap();
