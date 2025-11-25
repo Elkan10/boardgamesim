@@ -1,3 +1,5 @@
+use std::{fs::{File, OpenOptions}, io::{self, Write}};
+
 use rand::seq::IndexedRandom;
 
 use crate::{bitboard::{Bitboard, Move, WIN_MASKS}, board::{Board, Win}};
@@ -42,18 +44,106 @@ impl Counts {
     }
 }
 
-pub struct Base<S: Strategy> {
-    strat: S,
+
+pub struct CSVRow {
+    red: String,
+    yellow: String,
+    winner: Win,
+    move_count: u8,
 }
 
-impl<S: Strategy> Base<S> {
-    pub fn new(strat: S) -> Self {
-        Self { strat }
+impl CSVRow {
+    fn new(red: String, yellow: String, winner: Win, move_count: u8) -> Self {
+        Self { red, yellow, winner, move_count }
+    }
+
+    pub fn out(&self) -> String {
+        format!("{},{},{},{}\r\n", self.red, self.yellow, self.winner, self.move_count)
     }
 }
 
-impl<S: Strategy> Strategy for Base<S> {
-    fn best_move(&self, board: Board, last_move: Move) -> Move {
+pub struct CSV {
+    rows: Vec<CSVRow>,
+}
+
+impl CSV {
+    pub fn new() -> Self {
+        Self {
+            rows: vec![],
+        }
+    }
+
+    pub fn add(&mut self, row: CSVRow) {
+        self.rows.push(row);
+    }
+    
+    pub fn create(&self, path: String) -> io::Result<()> {
+        let mut file = File::create(path)?;
+        file.write_all(b"Red,Yellow,Win,Move Count\r\n")?;
+        for row in &self.rows {
+            file.write_all(&row.out().into_bytes())?;
+        }
+        Ok(())
+    }
+
+    pub fn append(&self, path: String) -> io::Result<()> {
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(path)?;
+
+        for row in &self.rows {
+            file.write_all(&row.out().into_bytes())?;
+        }
+
+        return Ok(())
+    }
+}
+
+
+
+pub fn simulate(red: &impl Strategy, yellow: &impl Strategy, count: u32) -> CSV {
+    let mut csv = CSV::new();
+    for _ in 0..count {
+        let row = play(red, yellow, false);
+        csv.add(row);
+    }
+    csv
+}
+
+pub fn play(red: &impl Strategy, yellow: &impl Strategy, print: bool) -> CSVRow {
+    if print {
+        println!("Simulating {} vs {}", red.name(), yellow.name())
+    }
+    let mut board = Board {
+        red: Bitboard::new(),
+        yellow: Bitboard::new(),
+        red_to_play: true,
+    };
+    let mut mv = Move {x: 8, y: 0};
+    let mut move_count = 0;
+    while let Win::None = board.win() {
+        mv = if board.red_to_play {
+            red.best_move_wb(board, mv)
+        } else {
+            yellow.best_move_wb(board, mv)
+        };
+        board = board.do_move(mv);
+        move_count += 1;
+
+        if print {
+            println!("---------{}", board);
+        }
+    }
+
+    CSVRow::new(red.name(), yellow.name(), board.win(), move_count)
+}
+
+pub trait Strategy {
+    fn best_move(&self, board: Board, last_move: Move) -> Move;
+    fn name(&self) -> String;
+
+    
+    fn best_move_wb(&self, board: Board, last_move: Move) -> Move {
         let legal = board.legal_moves();
 
         for mask in WIN_MASKS {
@@ -81,36 +171,13 @@ impl<S: Strategy> Strategy for Base<S> {
             }
         }
 
-        self.strat.best_move(board, last_move)
+        self.best_move(board, last_move)
     }
-}
-
-
-
-pub fn simulate(red: &impl Strategy, yellow: &impl Strategy) {
-    let mut board = Board {
-        red: Bitboard::new(),
-        yellow: Bitboard::new(),
-        red_to_play: true,
-    };
-    let mut mv = Move {x: 8, y: 0};
-    while let Win::None = board.win() {
-        mv = if board.red_to_play {
-            red.best_move(board, mv)
-        } else {
-            yellow.best_move(board, mv)
-        };
-        board = board.do_move(mv);
-        println!("---------{}", board);
-    }
-}
-
-pub trait Strategy {
-    fn best_move(&self, board: Board, last_move: Move) -> Move;
 }
 
 pub trait Evaluator {
     fn eval(&self, board: Board) -> i32;
+    fn name(&self) -> String;
 }
 
 impl<E> Strategy for E where E: Evaluator {
@@ -121,6 +188,10 @@ impl<E> Strategy for E where E: Evaluator {
         } else {
             vals.min_by_key(|x| x.1).unwrap().0 
         }
+    }
+
+    fn name(&self) -> String {
+        self.name()
     }
 }
 
@@ -138,27 +209,70 @@ impl<M: Strategy> Strategy for Defensive<M> {
     fn best_move(&self, board: Board, last_move: Move) -> Move {
         self.mirror.best_move(board.flipped(), last_move)
     }
+
+    fn name(&self) -> String {
+        return "D".to_owned() + &self.mirror.name();
+    }
 }
 
 pub struct Offset {
-    x_offset: u8,
-    y_offset: u8,
+    right: bool,
 }
 impl Offset {
-    pub fn new(x_offset: u8, y_offset: u8) -> Self {
-        Self { x_offset, y_offset }
+    pub fn new(right: bool) -> Self {
+        Self { right }
     }
 }
 
 impl Strategy for Offset {
     fn best_move(&self, board: Board, last_move: Move) -> Move {
-        let offset = Move {x: last_move.x + self.x_offset, y: last_move.y + self.y_offset};
+        let mut x = last_move.x;
+        //underflow protection
+        if !self.right && x == 0 {
+            return *board.legal_moves().choose(&mut rand::rng()).unwrap();
+        }
+        while x < 7 {
+            if self.right {
+                x += 1;
+            } else {
+                x -= 1;
+            }
+            match board.column(x) {
+                Some(mv) => return mv,
+                _ => {},
+            }
+        }
+        return *board.legal_moves().choose(&mut rand::rng()).unwrap();
+    }
+
+    fn name(&self) -> String {
+        if self.right {
+            return "Or".into()
+        } else {
+            return "Ol".into()
+        }
+    }
+}
+
+pub struct Above {}
+impl Above {
+    pub fn new() -> Self {
+        Self { }
+    }
+}
+
+impl Strategy for Above {
+    fn best_move(&self, board: Board, last_move: Move) -> Move {
+        let offset = Move {x: last_move.x, y: last_move.y + 1};
         if board.legal_moves().contains(&offset) {
             return offset;
         } else {
-            // TODO: Go in the direction until possible
             return *board.legal_moves().choose(&mut rand::rng()).unwrap();
         }
+    }
+
+    fn name(&self) -> String {
+        "A".into()
     }
 }
 
@@ -184,6 +298,10 @@ impl Evaluator for Greedy {
         let yellow = h.y3 as i32 * 100 + h.y2 as i32 * 5 + h.y1 as i32;
         red - yellow
     }
+
+    fn name(&self) -> String {
+        "G".into()
+    }
 }
 
 
@@ -198,6 +316,32 @@ impl Random {
 impl Strategy for Random {
     fn best_move(&self, board: Board, _last_move: Move) -> Move {
         *board.legal_moves().choose(&mut rand::rng()).unwrap()
+    }
+
+    fn best_move_wb(&self, board: Board, last_move: Move) -> Move {
+        self.best_move(board, last_move)
+    }
+
+    fn name(&self) -> String {
+        "R".into()
+    }
+}
+
+struct BaseRandom {}
+
+impl BaseRandom {
+    fn new() -> Self {
+        Self {  }
+    }
+}
+
+impl Strategy for BaseRandom {
+    fn best_move(&self, board: Board, last_move: Move) -> Move {
+        Random::new().best_move(board, last_move)
+    }
+
+    fn name(&self) -> String {
+        "Rb".into()
     }
 }
 
@@ -219,15 +363,27 @@ impl<E: Evaluator> Minimax<E> {
 impl<E: Evaluator> Strategy for Minimax<E> {
     fn best_move(&self, board: Board, _last_move: Move) -> Move {
         let alpha = i32::MIN + 1;
-        // TODO: Randomize
-        let vals = board.legal_moves().into_iter().map(|mv| (mv,minimax(board.do_move(mv), &self.eval, self.depth, alpha, -alpha)));
+        let mut vals: Vec<(Move, i32)> = board.legal_moves().into_iter().map(|mv| (mv,minimax(board.do_move(mv), &self.eval, self.depth, alpha, -alpha))).collect();
+
         if board.red_to_play {
-            let (mv, _) = vals.max_by_key(|x| x.1).unwrap();
-            return mv
+            vals.sort_by_key(|(_, x)| -x);
+            let max = vals[0].1;
+            let top: Vec<(Move, i32)> = vals.into_iter().take_while(|(_, x)| *x == max).collect();
+            return top.choose(&mut rand::rng()).unwrap().0
         } else {
-            let (mv, _) = vals.min_by_key(|x| x.1).unwrap();
-            return mv
+            vals.sort_by_key(|(_, x)| *x);
+            let min = vals[0].1;
+            let bot: Vec<(Move, i32)> = vals.into_iter().take_while(|(_, x)| *x == min).collect();
+            return bot.choose(&mut rand::rng()).unwrap().0
         }
+    }
+
+    fn best_move_wb(&self, board: Board, last_move: Move) -> Move {
+        self.best_move(board, last_move)
+    }
+
+    fn name(&self) -> String {
+        "M".to_owned() + &self.depth.to_string()
     }
 }
 

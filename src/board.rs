@@ -1,5 +1,5 @@
 
-use std::fmt::{Display, Write};
+use std::fmt::{Display, Write, write};
 
 use crate::bitboard::{Bitboard, Move, Symmetry};
 
@@ -72,6 +72,17 @@ pub enum Win {
     Tie
 }
 
+impl Display for Win {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Win::None => write!(f, "None"),
+            Win::Red => write!(f, "Red"),
+            Win::Yellow => write!(f, "Yellow"),
+            Win::Tie => write!(f, "Tie"),
+        }
+    }
+}
+
 impl Board {
     pub fn win(&self) -> Win {
         if c4_win(self.red) {
@@ -115,21 +126,23 @@ impl Board {
         }
     }
 
-    pub fn legal_moves(&self) -> Vec<Move> {
-        let mut out = vec![];
-        let mut x = 0;
-        for (red, yellow) in self.red.data.to_le_bytes().iter().zip(self.yellow.data.to_le_bytes()) {
-            if x >= 7 {
-                break;
-            }
-            let b = (red | yellow) + 1;
-            let height = b.trailing_zeros();
-            if height < 6 {
-                out.push(Move::new(x, height as u8));
-            }
-            x += 1;
+    pub fn column(&self, x: u8) -> Option<Move> {
+        if x > 7 {
+            return None;
         }
-        out
+        let red = self.red.data.to_le_bytes()[x as usize];
+        let yellow = self.yellow.data.to_le_bytes()[x as usize];
+        let b = (red | yellow) + 1;
+        let y = b.trailing_zeros() as u8;
+        if y < 6 {
+            return Some(Move::new(x, y))
+        }
+
+        None
+    }
+
+    pub fn legal_moves(&self) -> Vec<Move> {
+        (0..7).filter_map(|x| self.column(x)).collect()
     }
 
     pub fn do_move(&self, mv: Move) -> Self {

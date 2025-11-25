@@ -1,17 +1,16 @@
 use std::io::stdin;
 
-use crate::strategy::{simulate, Base, Defensive, Greedy, Minimax, Offset, Random, Strategy};
+use crate::strategy::{Greedy, Minimax, Offset, simulate};
 
 mod board;
 mod bitboard;
 mod strategy;
 
 fn main() {
-    let greedy = Greedy::new();
+    let minimax = Minimax::new(Greedy::new(), 5);
+    let right = Offset::new(true);
 
-    let minimax = Minimax::new(Greedy::new(), 11);
-    let random = Random::new();
-    let above = Base::new(Offset::new(0, 1));
+    let csv = simulate(&right, &minimax, 10);
 
-    simulate(&random, &minimax);
+    csv.create("out.csv".into()).unwrap();
 }
