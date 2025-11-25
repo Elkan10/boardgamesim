@@ -1,4 +1,3 @@
-use std::io::stdin;
 
 use crate::strategy::{Greedy, Minimax, Offset, simulate};
 
@@ -7,7 +6,7 @@ mod bitboard;
 mod strategy;
 
 fn main() {
-    let minimax = Minimax::new(Greedy::new(), 5);
+    let minimax = Minimax::new(Greedy::new(), 11);
     let right = Offset::new(true);
 
     let csv = simulate(&right, &minimax, 10);

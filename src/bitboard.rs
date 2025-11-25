@@ -39,6 +39,7 @@ const fn generate_win_masks() -> [u64; 69] {
             }
             y += 1;
         }
+        y = 0;
         x += 1;
     }
 
