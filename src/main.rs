@@ -1,15 +1,14 @@
 
-use crate::strategy::{Greedy, Minimax, Offset, simulate};
+use crate::strategy::{Greedy, Minimax, Offset, play, simulate_all};
 
 mod board;
 mod bitboard;
 mod strategy;
 
 fn main() {
-    let minimax = Minimax::new(Greedy::new(), 11);
+    let minimax = Minimax::new(Greedy::new(), 5);
     let right = Offset::new(true);
+    let greedy = Greedy::new();
 
-    let csv = simulate(&right, &minimax, 10);
-
-    csv.create("out.csv".into()).unwrap();
+    simulate_all(&[&minimax, &right, &greedy], 10, 5).unwrap();
 }

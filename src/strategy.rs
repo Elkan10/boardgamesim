@@ -77,7 +77,7 @@ impl CSV {
         self.rows.push(row);
     }
     
-    pub fn create(&self, path: String) -> io::Result<()> {
+    pub fn create(&self, path: &str) -> io::Result<()> {
         let mut file = File::create(path)?;
         file.write_all(b"Red,Yellow,Win,Move Count\r\n")?;
         for row in &self.rows {
@@ -86,7 +86,7 @@ impl CSV {
         Ok(())
     }
 
-    pub fn append(&self, path: String) -> io::Result<()> {
+    pub fn append(&self, path: &str) -> io::Result<()> {
         let mut file = OpenOptions::new()
             .append(true)
             .open(path)?;
@@ -100,8 +100,37 @@ impl CSV {
 }
 
 
+pub fn simulate_all(strats: &[&dyn Strategy], count: u32, batch_size: u32) -> io::Result<()> {
+    CSV::new().create("out.csv")?;
+    let mut prog = 0;
+    let total = (strats.len() * strats.len()) as u32;
+    for red in strats {
+        for yellow in strats {
+            simulate_batches(*red, *yellow, count, batch_size, prog, total)?;
+            prog += 1;
+        }
+    }
+    Ok(())
+}
 
-pub fn simulate(red: &impl Strategy, yellow: &impl Strategy, count: u32) -> CSV {
+pub fn simulate_batches(red: &dyn Strategy, yellow: &dyn Strategy, count: u32, batch_size: u32, prog: u32, total: u32) -> io::Result<()> {
+    let path = "out.csv";
+    let mut i = 0;
+    while i < count {
+        let batch = batch_size.min(count - i);
+        simulate(red, yellow, batch).append(&path)?;
+        i += batch_size;
+        let progress = (((i + prog * count) * 50) / (count * total)) as usize;
+        let bar = "=".repeat(progress) + &" ".repeat(50 - progress);
+        print!("\r[{}]", bar);
+        io::stdout().flush()?;
+    }
+
+    Ok(())
+}
+
+
+pub fn simulate(red: &dyn Strategy, yellow: &dyn Strategy, count: u32) -> CSV {
     let mut csv = CSV::new();
     for _ in 0..count {
         let row = play(red, yellow, false);
@@ -110,7 +139,7 @@ pub fn simulate(red: &impl Strategy, yellow: &impl Strategy, count: u32) -> CSV 
     csv
 }
 
-pub fn play(red: &impl Strategy, yellow: &impl Strategy, print: bool) -> CSVRow {
+pub fn play(red: &dyn Strategy, yellow: &dyn Strategy, print: bool) -> CSVRow {
     if print {
         println!("Simulating {} vs {}", red.name(), yellow.name())
     }

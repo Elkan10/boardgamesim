@@ -127,7 +127,7 @@ impl Board {
     }
 
     pub fn column(&self, x: u8) -> Option<Move> {
-        if x > 7 {
+        if x > 6 {
             return None;
         }
         let red = self.red.data.to_le_bytes()[x as usize];
