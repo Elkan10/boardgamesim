@@ -54,10 +54,13 @@ pub trait Strategy {
         let legal = board.legal_moves();
 
         for mask in WIN_MASKS {
-            let red_mask = board.red.data & mask;
-            let yellow_mask = board.yellow.data & mask;
-            if red_mask.count_ones() == 3 && yellow_mask.count_ones() == 0 {
-                let v = mask ^ red_mask;
+            let (my_mask, other_mask) = if board.red_to_play {
+                (board.red.data & mask, board.yellow.data & mask)
+            } else {
+                (board.yellow.data & mask, board.red.data & mask)
+            };
+            if my_mask.count_ones() == 3 && other_mask.count_ones() == 0 {
+                let v = mask ^ my_mask;
                 let i = v.trailing_zeros();
                 let x = i / 8;
                 let y = i - 8 * x;
@@ -66,8 +69,8 @@ pub trait Strategy {
                     return mv;
                 }
             }
-            if yellow_mask.count_ones() == 3 && red_mask.count_ones() == 0 {
-                let v = mask ^ yellow_mask;
+            if other_mask.count_ones() == 3 && my_mask.count_ones() == 0 {
+                let v = mask ^ other_mask;
                 let i = v.trailing_zeros();
                 let x = i / 8;
                 let y = i - 8 * x;
@@ -118,7 +121,7 @@ impl<M: Strategy> Strategy for Defensive<M> {
     }
 
     fn name(&self) -> String {
-        return "D".to_owned() + &self.mirror.name();
+        return "d".to_owned() + &self.mirror.name();
     }
 }
 
@@ -134,11 +137,11 @@ impl Offset {
 impl Strategy for Offset {
     fn best_move(&self, board: Board, last_move: Move) -> Move {
         let mut x = last_move.x;
-        //underflow protection
-        if !self.right && x == 0 {
-            return *board.legal_moves().choose(&mut rand::rng()).unwrap();
-        }
         while x < 7 {
+            //underflow protection
+            if !self.right && x == 0 {
+                return *board.legal_moves().choose(&mut rand::rng()).unwrap();
+            }
             if self.right {
                 x += 1;
             } else {
@@ -154,9 +157,9 @@ impl Strategy for Offset {
 
     fn name(&self) -> String {
         if self.right {
-            return "Or".into()
+            return "hS".into()
         } else {
-            return "Ol".into()
+            return "vS".into()
         }
     }
 }
@@ -194,6 +197,7 @@ impl Greedy {
 
 impl Evaluator for Greedy {
     fn eval(&self, board: Board) -> i32 {
+        let m: i32 = (board.red.data.count_ones() + board.yellow.data.count_ones()) as i32;
         match board.win() {
             crate::board::Win::None => {},
             crate::board::Win::Red => return 10000,
@@ -234,10 +238,10 @@ impl Strategy for Random {
     }
 }
 
-struct BaseRandom {}
+pub struct BaseRandom {}
 
 impl BaseRandom {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {  }
     }
 }
@@ -248,7 +252,7 @@ impl Strategy for BaseRandom {
     }
 
     fn name(&self) -> String {
-        "Rb".into()
+        "bR".into()
     }
 }
 
@@ -281,7 +285,7 @@ impl<E: Evaluator> Strategy for Minimax<E> {
             vals.sort_by_key(|(_, x)| *x);
             let min = vals[0].1;
             let bot: Vec<(Move, i32)> = vals.into_iter().take_while(|(_, x)| *x == min).collect();
-            return bot.choose(&mut rand::rng()).unwrap().0
+            return bot.choose(&mut rand::rng()).unwrap().0;
         }
     }
 
@@ -308,10 +312,10 @@ fn minimax<E: Evaluator>(board: Board, eval: &E, depth: u32, mut alpha: i32, mut
         children.sort_by_key(|b| -eval.eval(*b));
         for child in children {
             val = val.max(minimax(child, eval, depth - 1, alpha, beta));
+            alpha = alpha.max(val);
             if val >= beta {
                 break
             }
-            alpha = alpha.max(val);
         }
         return val;
     }
@@ -321,10 +325,10 @@ fn minimax<E: Evaluator>(board: Board, eval: &E, depth: u32, mut alpha: i32, mut
         children.sort_by_key(|b| eval.eval(*b));
         for child in children {
             val = val.min(minimax(child, eval, depth - 1, alpha, beta));
+            beta = beta.min(val);
             if val <= alpha {
                 break
             }
-            beta = beta.min(val);
         }
         return val;
     }

@@ -66,19 +66,20 @@ pub struct Progress {
     current: u32,
     current_bar: usize,
     total: u32,
+    bar_length: u32,
 }
 
 impl Progress {
-    pub fn new(total: u32) -> Self {
-        Self { current: 0, current_bar: 0, total }
+    pub fn new(total: u32, bar_length: u32) -> Self {
+        Self { current: 0, current_bar: 0, total, bar_length }
     }
 
     pub fn inc(&mut self) -> io::Result<()> {
         self.current += 1;
-        let progress = ((self.current * 50) / (self.total)) as usize;
-        if progress > self.current_bar {
+        let progress = ((self.current * self.bar_length) / (self.total)) as usize;
+        if progress > self.current_bar || progress == 0 {
             self.current_bar = progress;
-            let bar = "=".repeat(progress) + &" ".repeat(50 - progress);
+            let bar = "=".repeat(progress) + &" ".repeat(self.bar_length as usize - progress);
             print!("\r[{}]", bar);
             io::stdout().flush()?;
         }
@@ -129,7 +130,7 @@ pub fn simulate(red: &dyn Strategy, yellow: &dyn Strategy, count: u32, prog: &mu
     let mut csv = CSV::new();
     for _ in 0..count {
         let row = play(red, yellow, false);
-        prog.inc();
+        prog.inc().unwrap();
         csv.add(row);
     }
     csv
