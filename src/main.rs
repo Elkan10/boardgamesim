@@ -1,5 +1,5 @@
 
-use crate::{simulate::{BatchSettings, Progress, play, simulate_all}, strategy::{Above, BaseRandom, Defensive, Greedy, Minimax, Offset, Random, Strategy}, bitboard::WIN_MASKS};
+use crate::{simulate::{BatchSettings, Progress, simulate_all}, strategy::{Above, BaseRandom, Defensive, Greedy, Minimax, Offset, Random, Strategy}};
 
 mod board;
 mod bitboard;
@@ -7,7 +7,7 @@ mod strategy;
 mod simulate;
 
 fn main() {
-    let minimax = Minimax::new(Greedy::new(), 8);
+    let minimax = Minimax::new(Greedy::new(), 10);
     let right = Offset::new(true);
     let left = Offset::new(false);
     let greedy = Greedy::new();
@@ -16,7 +16,7 @@ fn main() {
     let above = Above::new();
     let defensive = Defensive::new(Greedy::new());
 
-    let strats: [&dyn Strategy; 8] = [&minimax, &right, &left, &greedy, &random, &random_wb, &above, &defensive];
+    let strats: [&dyn Strategy; 8] = [&right, &left, &greedy, &random, &random_wb, &above, &defensive, &minimax];
 
     let settings = BatchSettings {
         count: 100,

@@ -8,7 +8,7 @@ pub const YELLOW: &str = "\x1b[33m";
 pub const NO_COLOR: &str = "\x1b[0m";
 
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Board {
     pub red: Bitboard,
     pub yellow: Bitboard,

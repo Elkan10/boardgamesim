@@ -1,5 +1,4 @@
-use std::{fs::{File, OpenOptions}, io::{self, Write}};
-
+use std::{cell::RefCell, collections::HashMap};
 use rand::seq::IndexedRandom;
 
 use crate::{bitboard::{Bitboard, Move, WIN_MASKS}, board::{Board, Win}};
@@ -197,7 +196,6 @@ impl Greedy {
 
 impl Evaluator for Greedy {
     fn eval(&self, board: Board) -> i32 {
-        let m: i32 = (board.red.data.count_ones() + board.yellow.data.count_ones()) as i32;
         match board.win() {
             crate::board::Win::None => {},
             crate::board::Win::Red => return 10000,
@@ -263,19 +261,30 @@ impl Strategy for BaseRandom {
 pub struct Minimax<E: Evaluator> {
     eval: E,
     depth: u32,
+    pos_table: RefCell<HashMap<Board, PosEntry>>,
+}
+
+pub struct PosEntry {
+    depth: u32,
+    value: i32,
+}
+
+impl PosEntry {
+    pub fn new(depth: u32, value: i32) -> Self {
+        Self { depth, value }
+    }
 }
 
 impl<E: Evaluator> Minimax<E> {
     pub fn new(eval: E, depth: u32) -> Self {
-        Self { eval, depth }
+        Self { eval, depth, pos_table: RefCell::new(HashMap::new()) }
     }
 }
 
 impl<E: Evaluator> Strategy for Minimax<E> {
     fn best_move(&self, board: Board, _last_move: Move) -> Move {
         let alpha = i32::MIN + 1;
-        let mut vals: Vec<(Move, i32)> = board.legal_moves().into_iter().map(|mv| (mv,minimax(board.do_move(mv), &self.eval, self.depth, alpha, -alpha))).collect();
-
+        let mut vals: Vec<(Move, i32)> = board.legal_moves().into_iter().map(|mv| (mv,minimax(board.do_move(mv), &self.eval, &mut self.pos_table.borrow_mut(), self.depth, alpha, -alpha))).collect();
         if board.red_to_play {
             vals.sort_by_key(|(_, x)| -x);
             let max = vals[0].1;
@@ -298,7 +307,7 @@ impl<E: Evaluator> Strategy for Minimax<E> {
     }
 }
 
-fn minimax<E: Evaluator>(board: Board, eval: &E, depth: u32, mut alpha: i32, mut beta: i32) -> i32 {
+fn minimax<E: Evaluator>(board: Board, eval: &E, pos_table: &mut HashMap<Board, PosEntry>, depth: u32, mut alpha: i32, mut beta: i32) -> i32 {
     if depth == 0 {
         return eval.eval(board);
     }
@@ -306,17 +315,24 @@ fn minimax<E: Evaluator>(board: Board, eval: &E, depth: u32, mut alpha: i32, mut
         Win::None => {},
         _ => return eval.eval(board),
     }
+
+    if let Some(entry) = pos_table.get(&board) {
+        if entry.depth >= depth {
+            return entry.value
+        }
+    }
     if board.red_to_play {
         let mut val = i32::MIN + 1;
         let mut children: Vec<Board> = board.legal_moves().iter().map(|x| board.do_move(*x)).collect();
         children.sort_by_key(|b| -eval.eval(*b));
         for child in children {
-            val = val.max(minimax(child, eval, depth - 1, alpha, beta));
+            val = val.max(minimax(child, eval, pos_table, depth - 1, alpha, beta));
             alpha = alpha.max(val);
             if val >= beta {
                 break
             }
         }
+        pos_table.insert(board, PosEntry::new(depth, val));
         return val;
     }
     else {
@@ -324,12 +340,13 @@ fn minimax<E: Evaluator>(board: Board, eval: &E, depth: u32, mut alpha: i32, mut
         let mut children: Vec<Board> = board.legal_moves().iter().map(|x| board.do_move(*x)).collect();
         children.sort_by_key(|b| eval.eval(*b));
         for child in children {
-            val = val.min(minimax(child, eval, depth - 1, alpha, beta));
+            val = val.min(minimax(child, eval, pos_table, depth - 1, alpha, beta));
             beta = beta.min(val);
             if val <= alpha {
                 break
             }
         }
+        pos_table.insert(board, PosEntry::new(depth, val));
         return val;
     }
 }

@@ -66,7 +66,7 @@ impl Move {
         match  s {
             Symmetry::None => self.clone(),
             Symmetry::S1 => Self {
-                x: 7 - self.x,
+                x: 6 - self.x,
                 y: self.y,
             },
         }
@@ -76,7 +76,7 @@ impl Move {
 
 
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Bitboard {
     pub data: u64, //one byte, one column, uses 7 bytes (0RxxxxxL), in byte 6 bits (00TxxxxB)
 }
