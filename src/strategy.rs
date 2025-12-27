@@ -264,14 +264,21 @@ pub struct Minimax<E: Evaluator> {
     pos_table: RefCell<HashMap<Board, PosEntry>>,
 }
 
+pub enum Bound {
+    Upper,
+    Lower,
+    Exact,
+}
+
 pub struct PosEntry {
     depth: u32,
     value: i32,
+    bound: Bound,
 }
 
 impl PosEntry {
-    pub fn new(depth: u32, value: i32) -> Self {
-        Self { depth, value }
+    pub fn new(depth: u32, value: i32, bound: Bound) -> Self {
+        Self { depth, value, bound }
     }
 }
 
@@ -308,23 +315,31 @@ impl<E: Evaluator> Strategy for Minimax<E> {
 }
 
 fn minimax<E: Evaluator>(board: Board, eval: &E, pos_table: &mut HashMap<Board, PosEntry>, depth: u32, mut alpha: i32, mut beta: i32) -> i32 {
-    if depth == 0 {
-        return eval.eval(board);
-    }
     match board.win() {
         Win::None => {},
         _ => return eval.eval(board),
     }
 
+    if depth == 0 {
+        return eval.eval(board);
+    }
+    
     if let Some(entry) = pos_table.get(&board) {
         if entry.depth >= depth {
-            return entry.value
+            match entry.bound {
+                Bound::Exact => return entry.value,
+                Bound::Lower if entry.value >= beta => return entry.value,
+                Bound::Upper if entry.value <= alpha => return entry.value,
+                _ => {}
+            }
         }
     }
+    
     if board.red_to_play {
         let mut val = i32::MIN + 1;
         let mut children: Vec<Board> = board.legal_moves().iter().map(|x| board.do_move(*x)).collect();
         children.sort_by_key(|b| -eval.eval(*b));
+        let alpha_orig = alpha;
         for child in children {
             val = val.max(minimax(child, eval, pos_table, depth - 1, alpha, beta));
             alpha = alpha.max(val);
@@ -332,13 +347,21 @@ fn minimax<E: Evaluator>(board: Board, eval: &E, pos_table: &mut HashMap<Board, 
                 break
             }
         }
-        pos_table.insert(board, PosEntry::new(depth, val));
+        let bound = if val >= beta {
+            Bound::Lower
+        } else if val <= alpha_orig {
+            Bound::Upper
+        } else {
+            Bound::Exact
+        };
+        pos_table.insert(board, PosEntry::new(depth, val, bound));
         return val;
     }
     else {
         let mut val = i32::MAX - 1;
         let mut children: Vec<Board> = board.legal_moves().iter().map(|x| board.do_move(*x)).collect();
         children.sort_by_key(|b| eval.eval(*b));
+        let beta_orig = beta;
         for child in children {
             val = val.min(minimax(child, eval, pos_table, depth - 1, alpha, beta));
             beta = beta.min(val);
@@ -346,7 +369,14 @@ fn minimax<E: Evaluator>(board: Board, eval: &E, pos_table: &mut HashMap<Board, 
                 break
             }
         }
-        pos_table.insert(board, PosEntry::new(depth, val));
+        let bound = if val <= alpha {
+            Bound::Upper
+        } else if val <= beta_orig {
+            Bound::Lower
+        } else {
+            Bound::Exact
+        };
+        pos_table.insert(board, PosEntry::new(depth, val, bound));
         return val;
     }
 }
