@@ -19,11 +19,11 @@ fn main() {
     let strats: [&dyn Strategy; 8] = [&right, &left, &greedy, &random, &random_wb, &above, &defensive, &minimax];
 
     let settings = BatchSettings {
-        count: 100,
-        batch_size: 5
+        count: 1000,
+        batch_size: 100
     };
 
-    let mut prog = Progress::new(8 * 8 * 100, 200);
+    let mut prog = Progress::new(8 * 8 * 1000, 200);
 
     simulate_all(&strats, settings, &mut prog).unwrap();
 }

@@ -47,10 +47,6 @@ const fn generate_win_masks() -> [u64; 69] {
 }
 
 
-pub enum Symmetry {
-    None,
-    S1, //Horizontal Reflection
-}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Move {
@@ -61,15 +57,6 @@ pub struct Move {
 impl Move {
     pub fn new(x: u8, y: u8) -> Self {
         Self { x, y }
-    }
-    pub fn decanonicalize(&self, s: Symmetry) -> Self {
-        match  s {
-            Symmetry::None => self.clone(),
-            Symmetry::S1 => Self {
-                x: 6 - self.x,
-                y: self.y,
-            },
-        }
     }
 }
 
@@ -93,11 +80,8 @@ impl Bitboard {
         self.data & (1 << index) != 0
     }
 
-    pub fn do_symmetry(&self, sym: Symmetry) -> Self {
-        match sym {
-            Symmetry::None => self.clone(),
-            Symmetry::S1 => Bitboard { data: self.data.swap_bytes() >> 1 },
-        }
+    pub fn do_symmetry(&self) -> Self {
+        Bitboard { data: self.data.swap_bytes() >> 1 }
     }
 
 
